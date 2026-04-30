@@ -1,0 +1,11 @@
+{
+  "mcpServers": {
+    "lumen": {
+      "type": "http",
+      "url": "https://app.lumenpro.io/mcp",
+      "headers": {
+        "Authorization": "Bearer ${LUMEN_TOKEN}"
+      }
+    }
+  }
+}
