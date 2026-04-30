@@ -1,10 +1,10 @@
 import { NextRequest, NextResponse } from "next/server";
 import { generateStoryText } from "@/lib/openrouter";
-import { generateImage } from "@/lib/lumen";
+import { generateImage } from "@/lib/images";
 import type { Story } from "@/lib/types";
 
 export const runtime = "nodejs";
-export const maxDuration = 120;
+export const maxDuration = 300;
 
 export async function POST(req: NextRequest) {
   try {

@@ -16,7 +16,7 @@ export default function HomePage() {
     if (!title.trim() || !description.trim()) return;
     setLoading(true);
     setError(null);
-    setProgress("Writing the story...");
+    setProgress("Writing & illustrating the story... (1-2 min)");
 
     try {
       const res = await fetch("/api/generate", {

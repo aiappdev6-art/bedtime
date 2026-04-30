@@ -1,0 +1,36 @@
+import { generateImage as lumenGenerate } from "./lumen";
+import { generateImageWithOpenRouter } from "./openrouterImage";
+import { generateImageWithPollinations } from "./pollinations";
+
+type Provider = "pollinations" | "openrouter" | "lumen";
+
+const PROVIDER = (process.env.IMAGE_PROVIDER || "pollinations") as Provider;
+
+function fallbackImage(prompt: string): string {
+  const seed = encodeURIComponent(prompt.slice(0, 60));
+  return `https://picsum.photos/seed/${seed}/1024/1024`;
+}
+
+const ALL: Provider[] = ["pollinations", "openrouter", "lumen"];
+
+export async function generateImage(prompt: string): Promise<string> {
+  const order: Provider[] = [PROVIDER, ...ALL.filter((p) => p !== PROVIDER)];
+
+  for (const provider of order) {
+    try {
+      if (provider === "pollinations") {
+        return await generateImageWithPollinations(prompt);
+      } else if (provider === "openrouter") {
+        return await generateImageWithOpenRouter(prompt);
+      } else {
+        const url = await lumenGenerate(prompt);
+        if (!url.includes("picsum.photos")) return url;
+      }
+    } catch (err) {
+      console.error(`[image:${provider}] failed:`, err);
+    }
+  }
+
+  console.warn("[image] all providers failed, using placeholder");
+  return fallbackImage(prompt);
+}
