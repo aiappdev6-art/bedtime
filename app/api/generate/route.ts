@@ -1,6 +1,7 @@
 import { NextRequest, NextResponse } from "next/server";
 import { generateStoryText } from "@/lib/openrouter";
 import { generateImage } from "@/lib/images";
+import { generateNarration } from "@/lib/elevenlabs";
 import type { Story } from "@/lib/types";
 
 export const runtime = "nodejs";
@@ -17,10 +18,19 @@ export async function POST(req: NextRequest) {
     }
 
     const generated = await generateStoryText(title, description);
+    const storySeed = Math.floor(Math.random() * 1_000_000);
 
-    const images = await Promise.all(
-      generated.pages.map((p) => generateImage(p.imagePrompt)),
-    );
+    const [images, audios] = await Promise.all([
+      Promise.all(
+        generated.pages.map((p) =>
+          generateImage(p.imagePrompt, {
+            characterSheet: generated.characterSheet,
+            seed: storySeed,
+          }),
+        ),
+      ),
+      Promise.all(generated.pages.map((p) => generateNarration(p.text))),
+    ]);
 
     const story: Story = {
       title: generated.title || title,
@@ -28,6 +38,7 @@ export async function POST(req: NextRequest) {
         text: p.text,
         imagePrompt: p.imagePrompt,
         imageUrl: images[i],
+        audioUrl: audios[i],
       })),
     };
 

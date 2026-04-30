@@ -1,12 +1,12 @@
 export async function generateImageWithPollinations(
   prompt: string,
+  seed?: number,
 ): Promise<string> {
-  const fullPrompt = `Children's storybook illustration, soft warm colors, friendly cartoon style, no text or letters. ${prompt}`;
-  const seed = Math.floor(Math.random() * 1_000_000);
+  const seedValue = seed ?? Math.floor(Math.random() * 1_000_000);
   const params = new URLSearchParams({
     width: process.env.POLLINATIONS_WIDTH || "768",
     height: process.env.POLLINATIONS_HEIGHT || "768",
-    seed: String(seed),
+    seed: String(seedValue),
   });
   if (process.env.POLLINATIONS_MODEL) {
     params.set("model", process.env.POLLINATIONS_MODEL);
@@ -16,10 +16,8 @@ export async function generateImageWithPollinations(
     params.set("token", process.env.POLLINATIONS_TOKEN);
   }
 
-  const url = `https://image.pollinations.ai/prompt/${encodeURIComponent(fullPrompt)}?${params.toString()}`;
+  const url = `https://image.pollinations.ai/prompt/${encodeURIComponent(prompt)}?${params.toString()}`;
 
-  // Server-side fetch so the browser receives a ready data URI instead of
-  // waiting ~30-60s for Pollinations to render on first hit.
   const controller = new AbortController();
   const timeout = setTimeout(() => controller.abort(), 90_000);
   try {

@@ -1,6 +1,6 @@
 "use client";
 
-import { useEffect, useState } from "react";
+import { useEffect, useRef, useState } from "react";
 import { useRouter } from "next/navigation";
 import { AnimatePresence, motion } from "framer-motion";
 import type { Story } from "@/lib/types";
@@ -10,6 +10,9 @@ export default function StoryViewer() {
   const [story, setStory] = useState<Story | null>(null);
   const [page, setPage] = useState(0);
   const [direction, setDirection] = useState(1);
+  const [playing, setPlaying] = useState(false);
+  const audioRef = useRef<HTMLAudioElement | null>(null);
+  const utteranceRef = useRef<SpeechSynthesisUtterance | null>(null);
 
   useEffect(() => {
     const raw = sessionStorage.getItem("story");
@@ -19,6 +22,28 @@ export default function StoryViewer() {
     }
     setStory(JSON.parse(raw));
   }, [router]);
+
+  // Stop everything when page changes
+  useEffect(() => {
+    const audio = audioRef.current;
+    if (audio) {
+      audio.pause();
+      audio.currentTime = 0;
+    }
+    if (typeof window !== "undefined" && "speechSynthesis" in window) {
+      window.speechSynthesis.cancel();
+    }
+    setPlaying(false);
+  }, [page]);
+
+  // Stop on unmount
+  useEffect(() => {
+    return () => {
+      if (typeof window !== "undefined" && "speechSynthesis" in window) {
+        window.speechSynthesis.cancel();
+      }
+    };
+  }, []);
 
   if (!story) {
     return (
@@ -30,6 +55,7 @@ export default function StoryViewer() {
 
   const total = story.pages.length;
   const current = story.pages[page];
+  const hasElevenAudio = !!current.audioUrl;
 
   const next = () => {
     if (page < total - 1) {
@@ -44,6 +70,44 @@ export default function StoryViewer() {
     }
   };
 
+  const play = () => {
+    if (hasElevenAudio && audioRef.current) {
+      audioRef.current.play().catch((err) => {
+        console.warn("audio play failed, falling back to browser TTS:", err);
+        speakWithBrowser();
+      });
+      return;
+    }
+    speakWithBrowser();
+  };
+
+  const speakWithBrowser = () => {
+    if (typeof window === "undefined" || !("speechSynthesis" in window)) {
+      console.warn("Browser TTS not supported");
+      return;
+    }
+    window.speechSynthesis.cancel();
+    const utterance = new SpeechSynthesisUtterance(current.text);
+    utterance.rate = 0.95;
+    utterance.pitch = 1.05;
+    utterance.onstart = () => setPlaying(true);
+    utterance.onend = () => setPlaying(false);
+    utterance.onerror = () => setPlaying(false);
+    utteranceRef.current = utterance;
+    window.speechSynthesis.speak(utterance);
+  };
+
+  const stop = () => {
+    if (audioRef.current) {
+      audioRef.current.pause();
+      audioRef.current.currentTime = 0;
+    }
+    if (typeof window !== "undefined" && "speechSynthesis" in window) {
+      window.speechSynthesis.cancel();
+    }
+    setPlaying(false);
+  };
+
   return (
     <main className="min-h-screen flex flex-col items-center justify-center p-4 sm:p-8">
       <header className="w-full max-w-4xl mb-6 flex items-center justify-between">
@@ -56,9 +120,9 @@ export default function StoryViewer() {
         <h1 className="text-2xl sm:text-3xl font-bold text-amber-700 text-center flex-1">
           {story.title}
         </h1>
-        <div className="text-amber-700 font-semibold w-24 text-right">
+        <span className="text-amber-700 font-semibold w-24 text-right">
           {page + 1} / {total}
-        </div>
+        </span>
       </header>
 
       <div className="relative w-full max-w-4xl aspect-[4/3] sm:aspect-[16/10]">
@@ -100,7 +164,41 @@ export default function StoryViewer() {
         </AnimatePresence>
       </div>
 
-      <div className="flex gap-4 mt-8">
+      {hasElevenAudio && (
+        <audio
+          ref={audioRef}
+          src={current.audioUrl ?? undefined}
+          preload="auto"
+          onPlay={() => setPlaying(true)}
+          onPause={() => setPlaying(false)}
+          onEnded={() => setPlaying(false)}
+          className="hidden"
+        />
+      )}
+
+      <div className="flex items-center gap-3 mt-6">
+        <button
+          onClick={play}
+          disabled={playing}
+          className="flex items-center gap-2 px-5 py-2.5 bg-emerald-500 hover:bg-emerald-600 disabled:opacity-40 disabled:cursor-not-allowed text-white rounded-full font-semibold shadow transition"
+          aria-label="Play narration"
+        >
+          <span aria-hidden>▶</span> Play
+        </button>
+        <button
+          onClick={stop}
+          disabled={!playing}
+          className="flex items-center gap-2 px-5 py-2.5 bg-rose-500 hover:bg-rose-600 disabled:opacity-40 disabled:cursor-not-allowed text-white rounded-full font-semibold shadow transition"
+          aria-label="Stop narration"
+        >
+          <span aria-hidden>■</span> Stop
+        </button>
+        {!hasElevenAudio && (
+          <span className="text-xs text-amber-700/70 ml-2">browser voice</span>
+        )}
+      </div>
+
+      <div className="flex gap-4 mt-6">
         <button
           onClick={prev}
           disabled={page === 0}
