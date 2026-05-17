@@ -4,6 +4,7 @@ import { useState } from "react";
 import { useRouter } from "next/navigation";
 import Link from "next/link";
 import { getDeviceId } from "@/lib/deviceId";
+import AuthChip from "./AuthChip";
 
 export default function HomePage() {
   const router = useRouter();
@@ -45,6 +46,9 @@ export default function HomePage() {
   return (
     <main className="min-h-screen flex items-center justify-center p-6">
       <div className="w-full max-w-xl bg-white rounded-3xl shadow-xl p-8 border-4 border-amber-200">
+        <div className="flex justify-end mb-2">
+          <AuthChip />
+        </div>
         <h1 className="text-4xl font-bold text-amber-700 mb-2 text-center">
           Kid's Story Maker
         </h1>

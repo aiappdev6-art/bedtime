@@ -15,10 +15,29 @@ async function requireAdmin() {
   return user;
 }
 
+// Block cross-site mutation attempts. Browsers send the Origin header on
+// non-trivial CORS requests (and on same-origin POST/PATCH/DELETE in modern
+// browsers); rejecting mismatches blocks CSRF even though we already require
+// a session cookie.
+function checkOrigin(req: NextRequest): boolean {
+  const origin = req.headers.get("origin");
+  if (!origin) return true; // No Origin = same-origin GET-like nav from a server or curl; acceptable here.
+  const host = req.headers.get("host");
+  if (!host) return false;
+  try {
+    return new URL(origin).host === host;
+  } catch {
+    return false;
+  }
+}
+
 export async function PATCH(
   req: NextRequest,
   { params }: { params: Promise<{ id: string }> },
 ) {
+  if (!checkOrigin(req))
+    return NextResponse.json({ error: "bad origin" }, { status: 403 });
+
   const user = await requireAdmin();
   if (!user) return NextResponse.json({ error: "unauthorized" }, { status: 401 });
 

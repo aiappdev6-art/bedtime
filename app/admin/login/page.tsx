@@ -3,6 +3,7 @@
 import { Suspense, useState } from "react";
 import { useRouter, useSearchParams } from "next/navigation";
 import { supabaseBrowser } from "@/lib/supabase/browser";
+import { safeNext } from "@/lib/safeNext";
 
 function LoginForm() {
   const router = useRouter();
@@ -30,7 +31,7 @@ function LoginForm() {
       setLoading(false);
       return;
     }
-    const next = params.get("next") || "/admin";
+    const next = safeNext(params.get("next"), "/admin");
     router.push(next);
     router.refresh();
   }

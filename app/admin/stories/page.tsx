@@ -20,7 +20,9 @@ export default async function StoriesListPage({
   searchParams: SearchParams;
 }) {
   const sp = await searchParams;
-  const q = (sp.q ?? "").trim();
+  // Strip PostgREST filter syntax chars so user-supplied search can't inject
+  // extra clauses into the .or() string below (e.g. commas, parens, %, *).
+  const q = (sp.q ?? "").trim().replace(/[,()*%]/g, "").slice(0, 100);
   const status = sp.status ?? "active";
   const from = sp.from ?? "";
   const to = sp.to ?? "";

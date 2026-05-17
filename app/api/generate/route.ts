@@ -3,6 +3,7 @@ import { generateStoryText } from "@/lib/openrouter";
 import { generateImage } from "@/lib/images";
 import { generateNarration } from "@/lib/elevenlabs";
 import { supabaseAdmin } from "@/lib/supabase/server";
+import { createSupabaseServerClient } from "@/lib/supabase/ssr";
 import type { Story } from "@/lib/types";
 
 export const runtime = "nodejs";
@@ -10,6 +11,14 @@ export const maxDuration = 300;
 
 export async function POST(req: NextRequest) {
   try {
+    const supa = await createSupabaseServerClient();
+    const {
+      data: { user },
+    } = await supa.auth.getUser();
+    if (!user) {
+      return NextResponse.json({ error: "Not signed in" }, { status: 401 });
+    }
+
     const { title, description, deviceId } = await req.json();
     if (!title || !description) {
       return NextResponse.json(
@@ -44,22 +53,21 @@ export async function POST(req: NextRequest) {
     };
 
     let id: string | null = null;
-    if (deviceId) {
-      const { data, error } = await supabaseAdmin
-        .from("stories")
-        .insert({
-          device_id: deviceId,
-          title: story.title,
-          description,
-          pages: story.pages,
-        })
-        .select("id")
-        .single();
-      if (error) {
-        console.error("[supabase:insert]", error);
-      } else {
-        id = data.id;
-      }
+    const { data, error } = await supabaseAdmin
+      .from("stories")
+      .insert({
+        user_id: user.id,
+        device_id: deviceId ?? user.id,
+        title: story.title,
+        description,
+        pages: story.pages,
+      })
+      .select("id")
+      .single();
+    if (error) {
+      console.error("[supabase:insert]", error);
+    } else {
+      id = data.id;
     }
 
     return NextResponse.json({ id, story });

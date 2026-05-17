@@ -25,21 +25,33 @@ export async function middleware(req: NextRequest) {
   const user = data.user;
 
   const path = req.nextUrl.pathname;
-  const isLogin = path === "/admin/login";
+  const isAdminPath = path.startsWith("/admin");
+  const isAdminLogin = path === "/admin/login";
+  const isUserLogin = path === "/login";
 
-  if (!user && !isLogin) {
-    const loginUrl = req.nextUrl.clone();
-    loginUrl.pathname = "/admin/login";
-    loginUrl.searchParams.set("next", path);
-    return NextResponse.redirect(loginUrl);
+  // Admin area: only ADMIN_EMAIL may proceed.
+  if (isAdminPath) {
+    if (!user && !isAdminLogin) {
+      const loginUrl = req.nextUrl.clone();
+      loginUrl.pathname = "/admin/login";
+      loginUrl.searchParams.set("next", path);
+      return NextResponse.redirect(loginUrl);
+    }
+    if (user && ADMIN_EMAIL && user.email !== ADMIN_EMAIL && !isAdminLogin) {
+      await supabase.auth.signOut();
+      const loginUrl = req.nextUrl.clone();
+      loginUrl.pathname = "/admin/login";
+      loginUrl.searchParams.set("error", "not-admin");
+      return NextResponse.redirect(loginUrl);
+    }
+    return res;
   }
 
-  if (user && ADMIN_EMAIL && user.email !== ADMIN_EMAIL) {
-    // Logged in but not the admin — sign out and bounce.
-    await supabase.auth.signOut();
+  // End-user area: any authenticated user may proceed.
+  if (!user && !isUserLogin) {
     const loginUrl = req.nextUrl.clone();
-    loginUrl.pathname = "/admin/login";
-    loginUrl.searchParams.set("error", "not-admin");
+    loginUrl.pathname = "/login";
+    loginUrl.searchParams.set("next", path);
     return NextResponse.redirect(loginUrl);
   }
 
@@ -47,5 +59,8 @@ export async function middleware(req: NextRequest) {
 }
 
 export const config = {
-  matcher: ["/admin/:path*"],
+  // Gate everything except: api routes, /login, static assets, favicon.
+  // No paths in this app start with "api", "login", "_next/", or "favicon" other
+  // than the intended ones, so this simple negative lookahead is safe.
+  matcher: ["/((?!api|login|_next/static|_next/image|favicon.ico).*)"],
 };

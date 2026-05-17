@@ -1,18 +1,22 @@
-import { NextRequest, NextResponse } from "next/server";
+import { NextResponse } from "next/server";
 import { supabaseAdmin } from "@/lib/supabase/server";
+import { createSupabaseServerClient } from "@/lib/supabase/ssr";
 
 export const runtime = "nodejs";
 
-export async function GET(req: NextRequest) {
-  const deviceId = req.nextUrl.searchParams.get("deviceId");
-  if (!deviceId) {
-    return NextResponse.json({ error: "deviceId required" }, { status: 400 });
+export async function GET() {
+  const supa = await createSupabaseServerClient();
+  const {
+    data: { user },
+  } = await supa.auth.getUser();
+  if (!user) {
+    return NextResponse.json({ error: "Not signed in" }, { status: 401 });
   }
 
   const { data, error } = await supabaseAdmin
     .from("stories")
     .select("id, title, description, created_at, pages")
-    .eq("device_id", deviceId)
+    .eq("user_id", user.id)
     .is("deleted_at", null)
     .order("created_at", { ascending: false })
     .limit(50);

@@ -2,7 +2,7 @@
 
 import Link from "next/link";
 import { useEffect, useState } from "react";
-import { getDeviceId } from "@/lib/deviceId";
+import AuthChip from "../AuthChip";
 
 type LibraryItem = {
   id: string;
@@ -17,8 +17,7 @@ export default function LibraryPage() {
   const [error, setError] = useState<string | null>(null);
 
   useEffect(() => {
-    const deviceId = getDeviceId();
-    fetch(`/api/library?deviceId=${encodeURIComponent(deviceId)}`)
+    fetch("/api/library")
       .then((r) => r.json())
       .then((data) => {
         if (data.error) setError(data.error);
@@ -29,16 +28,19 @@ export default function LibraryPage() {
 
   return (
     <main className="min-h-screen p-6 sm:p-10">
-      <header className="max-w-5xl mx-auto flex items-center justify-between mb-8">
+      <header className="max-w-5xl mx-auto flex items-center justify-between mb-8 gap-4">
         <h1 className="text-3xl sm:text-4xl font-bold text-amber-700">
           Your Library
         </h1>
-        <Link
-          href="/"
-          className="px-4 py-2 bg-gradient-to-r from-amber-400 to-orange-400 text-white rounded-xl font-semibold shadow hover:shadow-lg transition"
-        >
-          + New Story
-        </Link>
+        <div className="flex items-center gap-3">
+          <AuthChip />
+          <Link
+            href="/"
+            className="px-4 py-2 bg-gradient-to-r from-amber-400 to-orange-400 text-white rounded-xl font-semibold shadow hover:shadow-lg transition"
+          >
+            + New Story
+          </Link>
+        </div>
       </header>
 
       {error && (
