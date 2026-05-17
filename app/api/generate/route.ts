@@ -2,6 +2,7 @@ import { NextRequest, NextResponse } from "next/server";
 import { generateStoryText } from "@/lib/openrouter";
 import { generateImage } from "@/lib/images";
 import { generateNarration } from "@/lib/elevenlabs";
+import { supabaseAdmin } from "@/lib/supabase/server";
 import type { Story } from "@/lib/types";
 
 export const runtime = "nodejs";
@@ -9,7 +10,7 @@ export const maxDuration = 300;
 
 export async function POST(req: NextRequest) {
   try {
-    const { title, description } = await req.json();
+    const { title, description, deviceId } = await req.json();
     if (!title || !description) {
       return NextResponse.json(
         { error: "title and description are required" },
@@ -42,7 +43,26 @@ export async function POST(req: NextRequest) {
       })),
     };
 
-    return NextResponse.json({ story });
+    let id: string | null = null;
+    if (deviceId) {
+      const { data, error } = await supabaseAdmin
+        .from("stories")
+        .insert({
+          device_id: deviceId,
+          title: story.title,
+          description,
+          pages: story.pages,
+        })
+        .select("id")
+        .single();
+      if (error) {
+        console.error("[supabase:insert]", error);
+      } else {
+        id = data.id;
+      }
+    }
+
+    return NextResponse.json({ id, story });
   } catch (err) {
     console.error("[/api/generate]", err);
     const message = err instanceof Error ? err.message : "Generation failed";

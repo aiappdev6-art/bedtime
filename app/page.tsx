@@ -2,6 +2,8 @@
 
 import { useState } from "react";
 import { useRouter } from "next/navigation";
+import Link from "next/link";
+import { getDeviceId } from "@/lib/deviceId";
 
 export default function HomePage() {
   const router = useRouter();
@@ -19,16 +21,21 @@ export default function HomePage() {
     setProgress("Writing & illustrating the story... (1-2 min)");
 
     try {
+      const deviceId = getDeviceId();
       const res = await fetch("/api/generate", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ title, description }),
+        body: JSON.stringify({ title, description, deviceId }),
       });
       const data = await res.json();
       if (!res.ok) throw new Error(data.error || "Failed to generate story");
 
       sessionStorage.setItem("story", JSON.stringify(data.story));
-      router.push("/story");
+      if (data.id) {
+        router.push(`/story/${data.id}`);
+      } else {
+        router.push("/story");
+      }
     } catch (err) {
       setError(err instanceof Error ? err.message : "Something went wrong");
       setLoading(false);
@@ -41,9 +48,17 @@ export default function HomePage() {
         <h1 className="text-4xl font-bold text-amber-700 mb-2 text-center">
           Kid's Story Maker
         </h1>
-        <p className="text-center text-gray-500 mb-8">
+        <p className="text-center text-gray-500 mb-4">
           Tell us a title and an idea — we'll write & illustrate a 4-page story.
         </p>
+        <div className="text-center mb-6">
+          <Link
+            href="/library"
+            className="text-sm text-amber-700 hover:underline font-semibold"
+          >
+            View saved stories →
+          </Link>
+        </div>
 
         <form onSubmit={handleSubmit} className="space-y-5">
           <div>

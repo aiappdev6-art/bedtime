@@ -5,9 +5,13 @@ import { useRouter } from "next/navigation";
 import { AnimatePresence, motion } from "framer-motion";
 import type { Story } from "@/lib/types";
 
-export default function StoryViewer() {
+export default function StoryViewer({
+  initialStory,
+}: {
+  initialStory?: Story;
+}) {
   const router = useRouter();
-  const [story, setStory] = useState<Story | null>(null);
+  const [story, setStory] = useState<Story | null>(initialStory ?? null);
   const [page, setPage] = useState(0);
   const [direction, setDirection] = useState(1);
   const [playing, setPlaying] = useState(false);
@@ -15,13 +19,14 @@ export default function StoryViewer() {
   const utteranceRef = useRef<SpeechSynthesisUtterance | null>(null);
 
   useEffect(() => {
+    if (initialStory) return;
     const raw = sessionStorage.getItem("story");
     if (!raw) {
       router.replace("/");
       return;
     }
     setStory(JSON.parse(raw));
-  }, [router]);
+  }, [router, initialStory]);
 
   // Stop everything when page changes
   useEffect(() => {
