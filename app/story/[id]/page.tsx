@@ -15,11 +15,11 @@ export default async function StoryByIdPage({
 
   const { data, error } = await supabaseAdmin
     .from("stories")
-    .select("title, pages")
+    .select("title, pages, deleted_at")
     .eq("id", id)
     .single();
 
-  if (error || !data) notFound();
+  if (error || !data || data.deleted_at) notFound();
 
   const story: Story = {
     title: data.title,

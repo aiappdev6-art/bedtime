@@ -13,6 +13,7 @@ export async function GET(req: NextRequest) {
     .from("stories")
     .select("id, title, description, created_at, pages")
     .eq("device_id", deviceId)
+    .is("deleted_at", null)
     .order("created_at", { ascending: false })
     .limit(50);
 
