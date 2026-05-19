@@ -35,5 +35,5 @@ export default async function StoryByIdPage({
     pages: data.pages as StoryPage[],
   };
 
-  return <StoryViewer initialStory={story} />;
+  return <StoryViewer initialStory={story} storyId={id} />;
 }
