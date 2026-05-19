@@ -1,8 +1,13 @@
 import Link from "next/link";
 import { supabaseAdmin } from "@/lib/supabase/server";
+import { formatKwd } from "@/lib/pricing";
 
 export const runtime = "nodejs";
 export const dynamic = "force-dynamic";
+
+// We count revenue from any order that has reached `paid` or later (paid,
+// consumed). Refunded orders are excluded.
+const REVENUE_STATUSES = ["paid", "consumed"] as const;
 
 type StoryRow = {
   id: string;
@@ -54,6 +59,30 @@ async function getStats() {
     (devicesRes.data ?? []).map((r) => r.device_id),
   ).size;
 
+  // Revenue: sum amount_kwd for orders that have actually been paid.
+  // We don't subtract refunds here — refunds get their own counter.
+  const [revAllRes, revTodayRes, refundsRes] = await Promise.all([
+    supabaseAdmin
+      .from("orders")
+      .select("amount_kwd")
+      .in("status", REVENUE_STATUSES as unknown as string[]),
+    supabaseAdmin
+      .from("orders")
+      .select("amount_kwd")
+      .in("status", REVENUE_STATUSES as unknown as string[])
+      .gte("paid_at", today.toISOString()),
+    supabaseAdmin
+      .from("orders")
+      .select("id", { count: "exact", head: true })
+      .eq("status", "refunded"),
+  ]);
+
+  const sum = (rows: { amount_kwd: number | string }[] | null) =>
+    (rows ?? []).reduce((acc, r) => acc + Number(r.amount_kwd ?? 0), 0);
+  const revenueTotal = sum(revAllRes.data);
+  const revenueToday = sum(revTodayRes.data);
+  const refundCount = refundsRes.count ?? 0;
+
   // Bucket the last 7 days for a tiny bar chart.
   const buckets: { day: string; label: string; count: number }[] = [];
   for (let i = 6; i >= 0; i--) {
@@ -72,7 +101,18 @@ async function getStats() {
   }
   const max = Math.max(1, ...buckets.map((b) => b.count));
 
-  return { total, todayCount, flagged, deleted, uniqueDevices, buckets, max };
+  return {
+    total,
+    todayCount,
+    flagged,
+    deleted,
+    uniqueDevices,
+    buckets,
+    max,
+    revenueTotal,
+    revenueToday,
+    refundCount,
+  };
 }
 
 async function getRecent(): Promise<StoryRow[]> {
@@ -97,6 +137,31 @@ export default async function AdminDashboard() {
         <StatCard label="Unique devices" value={stats.uniqueDevices} />
         <StatCard label="Flagged" value={stats.flagged} tone="amber" />
         <StatCard label="Deleted" value={stats.deleted} tone="red" />
+      </div>
+
+      <div className="grid grid-cols-2 lg:grid-cols-4 gap-3">
+        <StatCard
+          label="Revenue (total)"
+          value={formatKwd(stats.revenueTotal)}
+          tone="emerald"
+        />
+        <StatCard
+          label="Revenue today"
+          value={formatKwd(stats.revenueToday)}
+          tone="emerald"
+        />
+        <StatCard label="Refunds" value={stats.refundCount} tone="amber" />
+        <Link
+          href="/admin/orders"
+          className="bg-slate-800 text-white rounded-2xl p-4 flex items-center justify-between hover:bg-slate-700 transition"
+        >
+          <div>
+            <div className="text-xs uppercase tracking-wide opacity-70 mb-1">
+              Manage
+            </div>
+            <div className="text-xl font-bold">Orders →</div>
+          </div>
+        </Link>
       </div>
 
       <section className="bg-white rounded-2xl border border-slate-200 p-5">
@@ -181,15 +246,17 @@ function StatCard({
   tone,
 }: {
   label: string;
-  value: number;
-  tone?: "amber" | "red";
+  value: number | string;
+  tone?: "amber" | "red" | "emerald";
 }) {
   const color =
     tone === "amber"
       ? "text-amber-600"
       : tone === "red"
         ? "text-red-600"
-        : "text-slate-800";
+        : tone === "emerald"
+          ? "text-emerald-600"
+          : "text-slate-800";
   return (
     <div className="bg-white rounded-2xl border border-slate-200 p-4">
       <div className="text-xs uppercase tracking-wide text-slate-500 mb-1">

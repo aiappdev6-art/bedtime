@@ -37,6 +37,7 @@ export default function AdminNav({ email }: { email: string }) {
           <span className="font-bold text-slate-800 mr-4">Admin</span>
           {link("/admin", "Dashboard")}
           {link("/admin/stories", "Stories")}
+          {link("/admin/orders", "Orders")}
         </div>
         <div className="flex items-center gap-3 text-sm">
           <span className="text-slate-500">{email}</span>
