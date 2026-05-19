@@ -7,8 +7,10 @@ import type { Story } from "@/lib/types";
 
 export default function StoryViewer({
   initialStory,
+  storyId,
 }: {
   initialStory?: Story;
+  storyId?: string;
 }) {
   const router = useRouter();
   const [story, setStory] = useState<Story | null>(initialStory ?? null);
@@ -61,6 +63,10 @@ export default function StoryViewer({
   const total = story.pages.length;
   const current = story.pages[page];
   const hasElevenAudio = !!current.audioUrl;
+  // Voice is a paid add-on. If the user didn't purchase it, every page has
+  // audioUrl === null and we hide audio controls entirely (no silent browser-TTS
+  // fallback — that would undermine the upsell).
+  const narrationPurchased = story.pages.some((p) => !!p.audioUrl);
 
   const next = () => {
     if (page < total - 1) {
@@ -181,27 +187,26 @@ export default function StoryViewer({
         />
       )}
 
-      <div className="flex items-center gap-3 mt-6">
-        <button
-          onClick={play}
-          disabled={playing}
-          className="flex items-center gap-2 px-5 py-2.5 bg-emerald-500 hover:bg-emerald-600 disabled:opacity-40 disabled:cursor-not-allowed text-white rounded-full font-semibold shadow transition"
-          aria-label="Play narration"
-        >
-          <span aria-hidden>▶</span> Play
-        </button>
-        <button
-          onClick={stop}
-          disabled={!playing}
-          className="flex items-center gap-2 px-5 py-2.5 bg-rose-500 hover:bg-rose-600 disabled:opacity-40 disabled:cursor-not-allowed text-white rounded-full font-semibold shadow transition"
-          aria-label="Stop narration"
-        >
-          <span aria-hidden>■</span> Stop
-        </button>
-        {!hasElevenAudio && (
-          <span className="text-xs text-amber-700/70 ml-2">browser voice</span>
-        )}
-      </div>
+      {narrationPurchased && (
+        <div className="flex items-center gap-3 mt-6">
+          <button
+            onClick={play}
+            disabled={playing}
+            className="flex items-center gap-2 px-5 py-2.5 bg-emerald-500 hover:bg-emerald-600 disabled:opacity-40 disabled:cursor-not-allowed text-white rounded-full font-semibold shadow transition"
+            aria-label="Play narration"
+          >
+            <span aria-hidden>▶</span> Play
+          </button>
+          <button
+            onClick={stop}
+            disabled={!playing}
+            className="flex items-center gap-2 px-5 py-2.5 bg-rose-500 hover:bg-rose-600 disabled:opacity-40 disabled:cursor-not-allowed text-white rounded-full font-semibold shadow transition"
+            aria-label="Stop narration"
+          >
+            <span aria-hidden>■</span> Stop
+          </button>
+        </div>
+      )}
 
       <div className="flex gap-4 mt-6">
         <button
@@ -235,6 +240,15 @@ export default function StoryViewer({
           />
         ))}
       </div>
+
+      {storyId && (
+        <a
+          href={`/api/story/${storyId}/pdf`}
+          className="mt-6 px-5 py-2.5 bg-white border-2 border-amber-300 text-amber-700 rounded-full font-semibold shadow hover:bg-amber-50 transition inline-flex items-center gap-2"
+        >
+          <span aria-hidden>⬇</span> Download PDF
+        </a>
+      )}
     </main>
   );
 }
