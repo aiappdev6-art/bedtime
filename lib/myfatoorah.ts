@@ -53,25 +53,38 @@ export type SendPaymentResult = {
   invoiceUrl: string;
 };
 
+/** Drop keys whose value is undefined / null / "" so we don't send empty
+ *  fields that some MyFatoorah validators reject. */
+function compact<T extends Record<string, unknown>>(obj: T): Partial<T> {
+  const out: Record<string, unknown> = {};
+  for (const [k, v] of Object.entries(obj)) {
+    if (v === undefined || v === null) continue;
+    if (typeof v === "string" && v.length === 0) continue;
+    out[k] = v;
+  }
+  return out as Partial<T>;
+}
+
 export async function sendPayment(
   input: SendPaymentInput,
 ): Promise<SendPaymentResult> {
   // Split a single phone like "+96599887766" into country code + number.
-  // MyFatoorah wants these separate; if we don't have one, omit both.
+  // MyFatoorah's docs are inconsistent: some endpoints want "+965", others
+  // want "965". Plain digits is the safer default — accepted by both.
   let mobileCountryCode: string | undefined;
   let customerMobile: string | undefined;
   if (input.customer.phone) {
-    const m = input.customer.phone.match(/^\+(\d{1,4})(\d{6,})$/);
+    const m = input.customer.phone.match(/^\+?(\d{1,4})(\d{6,})$/);
     if (m) {
-      mobileCountryCode = `+${m[1]}`;
+      mobileCountryCode = m[1]; // digits only, no leading "+"
       customerMobile = m[2];
     }
   }
 
-  const body = {
-    NotificationOption: "LNK", // we don't want MyFatoorah to send SMS/email; just give us the URL
+  const body = compact({
+    NotificationOption: "LNK", // we want the URL only, no SMS/email from MF
     InvoiceValue: Number(input.amountKwd.toFixed(3)),
-    CustomerName: input.customer.name || "Story customer",
+    CustomerName: (input.customer.name || "Story customer").slice(0, 50),
     DisplayCurrencyIso: "KWD",
     MobileCountryCode: mobileCountryCode,
     CustomerMobile: customerMobile,
@@ -81,24 +94,47 @@ export async function sendPayment(
     Language: "EN",
     CustomerReference: input.orderId,
     UserDefinedField: input.orderId,
-  };
+  });
 
   const res = await fetch(`${BASE_URL}/v2/SendPayment`, {
     method: "POST",
     headers: authHeaders(),
     body: JSON.stringify(body),
   });
-  const json = (await res.json()) as MFResponse<{
+
+  // Read text first so we can log the raw response even if JSON parsing fails.
+  const rawText = await res.text();
+  let json: MFResponse<{
     InvoiceId: number;
     InvoiceURL: string;
     CustomerReference: string;
     UserDefinedField: string;
   }>;
+  try {
+    json = JSON.parse(rawText);
+  } catch {
+    console.error(
+      "[myfatoorah:SendPayment] non-JSON response",
+      res.status,
+      rawText.slice(0, 500),
+    );
+    throw new Error(
+      `MyFatoorah SendPayment failed: non-JSON response (HTTP ${res.status})`,
+    );
+  }
 
   if (!res.ok || !json.IsSuccess || !json.Data) {
+    // Log everything so we can diagnose. Redact the API key (not in body anyway).
+    console.error("[myfatoorah:SendPayment] request body:", body);
+    console.error("[myfatoorah:SendPayment] response:", {
+      status: res.status,
+      IsSuccess: json.IsSuccess,
+      Message: json.Message,
+      ValidationErrors: json.ValidationErrors,
+    });
     const reason =
-      json.Message ||
       json.ValidationErrors?.map((e) => `${e.Name}: ${e.Error}`).join("; ") ||
+      json.Message ||
       `HTTP ${res.status}`;
     throw new Error(`MyFatoorah SendPayment failed: ${reason}`);
   }
