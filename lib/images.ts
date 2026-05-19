@@ -11,6 +11,14 @@ export type ImageOptions = {
   characterSheet?: string;
   /** Stable seed per story so style/colors stay consistent across pages */
   seed?: number;
+  /** Storage path of a user-uploaded reference photo (kept for diagnostics) */
+  characterImagePath?: string | null;
+  /**
+   * Pre-loaded reference photo as a data: URI. When provided we force the
+   * OpenRouter (Gemini) provider since it's the only one that accepts image
+   * input. Computed once per story in /api/generate and reused for all pages.
+   */
+  referenceImageDataUri?: string | null;
 };
 
 function fallbackImage(prompt: string): string {
@@ -30,6 +38,24 @@ export async function generateImage(
   options: ImageOptions = {},
 ): Promise<string> {
   const fullPrompt = buildPrompt(scenePrompt, options.characterSheet);
+  const ref = options.referenceImageDataUri ?? null;
+
+  // When the user paid for a custom character, OpenRouter (Gemini) is the
+  // only provider that can use the reference photo. Don't fall through to
+  // pollinations/lumen on failure — those would produce a non-personalised
+  // image, which violates what the user paid for. Use picsum placeholder
+  // as the last resort so the page never throws.
+  if (ref) {
+    try {
+      return await generateImageWithOpenRouter(fullPrompt, {
+        referenceImageDataUri: ref,
+      });
+    } catch (err) {
+      console.error("[image:openrouter:character] failed:", err);
+      return fallbackImage(scenePrompt);
+    }
+  }
+
   const order: Provider[] = [PROVIDER, ...ALL.filter((p) => p !== PROVIDER)];
 
   for (const provider of order) {
