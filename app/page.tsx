@@ -1,45 +1,77 @@
 "use client";
 
-import { useState } from "react";
+import { useMemo, useState } from "react";
 import { useRouter } from "next/navigation";
 import Link from "next/link";
-import { getDeviceId } from "@/lib/deviceId";
 import AuthChip from "./AuthChip";
+import { PRICES, computeTotal, formatKwd } from "@/lib/pricing";
 
 export default function HomePage() {
   const router = useRouter();
   const [title, setTitle] = useState("");
   const [description, setDescription] = useState("");
+  const [voice, setVoice] = useState(false);
+  const [characterImage, setCharacterImage] = useState(false);
+  const [characterFile, setCharacterFile] = useState<File | null>(null);
+
   const [loading, setLoading] = useState(false);
-  const [error, setError] = useState<string | null>(null);
   const [progress, setProgress] = useState("");
+  const [error, setError] = useState<string | null>(null);
+
+  const total = useMemo(
+    () => computeTotal({ voice, characterImage }),
+    [voice, characterImage],
+  );
 
   async function handleSubmit(e: React.FormEvent) {
     e.preventDefault();
     if (!title.trim() || !description.trim()) return;
+    if (characterImage && !characterFile) {
+      setError("Please choose an image for the main character, or uncheck that option.");
+      return;
+    }
+
     setLoading(true);
     setError(null);
-    setProgress("Writing & illustrating the story... (1-2 min)");
 
     try {
-      const deviceId = getDeviceId();
-      const res = await fetch("/api/generate", {
+      // 1. Upload character image (if any).
+      let characterImagePath: string | null = null;
+      if (characterImage && characterFile) {
+        setProgress("Uploading your photo...");
+        const fd = new FormData();
+        fd.append("file", characterFile);
+        const up = await fetch("/api/upload/character", {
+          method: "POST",
+          body: fd,
+        });
+        const upData = await up.json();
+        if (!up.ok) throw new Error(upData.error || "Upload failed");
+        characterImagePath = upData.path;
+      }
+
+      // 2. Create the pending order.
+      setProgress("Creating order...");
+      const orderRes = await fetch("/api/orders", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ title, description, deviceId }),
+        body: JSON.stringify({
+          title,
+          description,
+          voice,
+          characterImage,
+          characterImagePath,
+        }),
       });
-      const data = await res.json();
-      if (!res.ok) throw new Error(data.error || "Failed to generate story");
+      const orderData = await orderRes.json();
+      if (!orderRes.ok) throw new Error(orderData.error || "Order failed");
 
-      sessionStorage.setItem("story", JSON.stringify(data.story));
-      if (data.id) {
-        router.push(`/story/${data.id}`);
-      } else {
-        router.push("/story");
-      }
+      // 3. To checkout.
+      router.push(`/story/checkout?orderId=${orderData.orderId}`);
     } catch (err) {
       setError(err instanceof Error ? err.message : "Something went wrong");
       setLoading(false);
+      setProgress("");
     }
   }
 
@@ -50,17 +82,23 @@ export default function HomePage() {
           <AuthChip />
         </div>
         <h1 className="text-4xl font-bold text-amber-700 mb-2 text-center">
-          Kid's Story Maker
+          Kid&apos;s Story Maker
         </h1>
         <p className="text-center text-gray-500 mb-4">
-          Tell us a title and an idea — we'll write & illustrate a 4-page story.
+          Tell us a title and an idea — we&apos;ll write &amp; illustrate a 4-page story.
         </p>
-        <div className="text-center mb-6">
+        <div className="flex justify-center gap-4 mb-6 text-sm">
           <Link
             href="/library"
-            className="text-sm text-amber-700 hover:underline font-semibold"
+            className="text-amber-700 hover:underline font-semibold"
           >
-            View saved stories →
+            Saved stories →
+          </Link>
+          <Link
+            href="/orders"
+            className="text-amber-700 hover:underline font-semibold"
+          >
+            My orders →
           </Link>
         </div>
 
@@ -95,12 +133,89 @@ export default function HomePage() {
             />
           </div>
 
+          {/* Options */}
+          <fieldset className="rounded-xl border-2 border-amber-100 p-4 space-y-3">
+            <legend className="text-sm font-semibold text-gray-700 px-2">
+              Options
+            </legend>
+
+            <label className="flex items-start gap-3 cursor-pointer">
+              <input
+                type="checkbox"
+                checked={voice}
+                onChange={(e) => setVoice(e.target.checked)}
+                disabled={loading}
+                className="mt-1 w-5 h-5 accent-amber-500"
+              />
+              <span className="flex-1">
+                <span className="font-semibold text-gray-800">Voice narration</span>
+                <span className="block text-xs text-gray-500">
+                  Each page is read aloud by a friendly narrator.
+                </span>
+              </span>
+              <span className="text-sm font-mono text-amber-700">
+                +{formatKwd(PRICES.voice)}
+              </span>
+            </label>
+
+            <label className="flex items-start gap-3 cursor-pointer">
+              <input
+                type="checkbox"
+                checked={characterImage}
+                onChange={(e) => {
+                  setCharacterImage(e.target.checked);
+                  if (!e.target.checked) setCharacterFile(null);
+                }}
+                disabled={loading}
+                className="mt-1 w-5 h-5 accent-amber-500"
+              />
+              <span className="flex-1">
+                <span className="font-semibold text-gray-800">
+                  Use your photo as the main character
+                </span>
+                <span className="block text-xs text-gray-500">
+                  Upload a face photo and we&apos;ll make them the hero.
+                </span>
+              </span>
+              <span className="text-sm font-mono text-amber-700">
+                +{formatKwd(PRICES.characterImage)}
+              </span>
+            </label>
+
+            {characterImage && (
+              <div className="pl-8">
+                <input
+                  type="file"
+                  accept="image/jpeg,image/png,image/webp"
+                  onChange={(e) => setCharacterFile(e.target.files?.[0] ?? null)}
+                  disabled={loading}
+                  className="text-sm w-full"
+                />
+                {characterFile && (
+                  <p className="text-xs text-gray-500 mt-1">
+                    {characterFile.name} ({Math.round(characterFile.size / 1024)} KB)
+                  </p>
+                )}
+              </div>
+            )}
+          </fieldset>
+
+          {/* Total */}
+          <div className="flex items-center justify-between rounded-xl bg-amber-50 border-2 border-amber-200 px-4 py-3">
+            <span className="font-semibold text-amber-800">Total</span>
+            <span className="font-bold text-amber-800 font-mono text-lg">
+              {formatKwd(total)}
+            </span>
+          </div>
+
           <button
             type="submit"
             disabled={loading}
             className="w-full py-4 bg-gradient-to-r from-amber-400 to-orange-400 text-white font-bold rounded-xl shadow-md hover:shadow-lg transition disabled:opacity-60"
           >
-            {loading ? progress || "Generating..." : "Create Story ✨"}
+            {loading
+              ? progress || "Working..."
+              : `Continue to payment — ${formatKwd(total)}`}
           </button>
 
           {error && (
