@@ -1,14 +1,16 @@
--- Phone-OTP auth (via Supabase Auth) + orders for MyFatoorah payments.
--- auth.users is managed by Supabase; phone OTP just populates rows there.
+-- OTP auth (via Supabase Auth, email or phone) + orders for MyFatoorah payments.
+-- auth.users is managed by Supabase; OTP verification populates rows there.
 -- profiles holds app-specific user metadata. orders tracks payment + options.
 
 create table if not exists public.profiles (
-  id          uuid primary key references auth.users(id) on delete cascade,
-  phone       text,
+  id           uuid primary key references auth.users(id) on delete cascade,
+  email        text,
+  phone        text,
   display_name text,
-  created_at  timestamptz not null default now()
+  created_at   timestamptz not null default now()
 );
 
+create index if not exists profiles_email_idx on public.profiles (email);
 create index if not exists profiles_phone_idx on public.profiles (phone);
 
 alter table public.profiles enable row level security;
@@ -19,14 +21,15 @@ create policy "profiles_self_read"
   using (auth.uid() = id);
 
 -- Auto-create a profile row whenever a new auth.users row appears.
+-- Copies whichever identifier (email or phone) the user signed up with.
 create or replace function public.handle_new_user()
 returns trigger
 language plpgsql
 security definer set search_path = public
 as $$
 begin
-  insert into public.profiles (id, phone)
-  values (new.id, new.phone)
+  insert into public.profiles (id, email, phone)
+  values (new.id, new.email, new.phone)
   on conflict (id) do nothing;
   return new;
 end;

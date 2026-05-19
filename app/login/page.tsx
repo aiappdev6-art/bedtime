@@ -5,7 +5,7 @@ import { useRouter, useSearchParams } from "next/navigation";
 import { supabaseBrowser } from "@/lib/supabase/browser";
 import { safeNext } from "@/lib/safeNext";
 
-type Step = "phone" | "code";
+type Step = "email" | "code";
 
 const RESEND_SECONDS = 60;
 
@@ -22,8 +22,8 @@ function LoginForm() {
   const search = useSearchParams();
   const next = safeNext(search.get("next"));
 
-  const [step, setStep] = useState<Step>("phone");
-  const [phone, setPhone] = useState("+965");
+  const [step, setStep] = useState<Step>("email");
+  const [email, setEmail] = useState("");
   const [code, setCode] = useState("");
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
@@ -41,14 +41,18 @@ function LoginForm() {
     setError(null);
     setInfo(null);
     if (cooldown > 0) return;
-    const trimmed = phone.trim();
-    if (!/^\+\d{8,15}$/.test(trimmed)) {
-      setError("Enter your phone in international format, e.g. +96599887766");
+    const trimmed = email.trim();
+    if (!/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(trimmed)) {
+      setError("Enter a valid email address.");
       return;
     }
     setLoading(true);
     const { error } = await supabaseBrowser.auth.signInWithOtp({
-      phone: trimmed,
+      email: trimmed,
+      options: {
+        // We want the 6-digit code, not a magic link.
+        shouldCreateUser: true,
+      },
     });
     setLoading(false);
     if (error) {
@@ -70,9 +74,9 @@ function LoginForm() {
     }
     setLoading(true);
     const { error } = await supabaseBrowser.auth.verifyOtp({
-      phone: phone.trim(),
+      email: email.trim(),
       token: trimmed,
-      type: "sms",
+      type: "email",
     });
     setLoading(false);
     if (error) {
@@ -90,30 +94,30 @@ function LoginForm() {
           Sign in
         </h1>
         <p className="text-center text-gray-500 mb-6">
-          {step === "phone"
-            ? "Enter your phone number to receive a verification code."
+          {step === "email"
+            ? "Enter your email to receive a verification code."
             : "Enter the 6-digit code we sent you."}
         </p>
 
-        {step === "phone" ? (
+        {step === "email" ? (
           <form onSubmit={sendCode} className="space-y-5">
             <div>
               <label className="block text-sm font-semibold mb-1 text-gray-700">
-                Phone number
+                Email
               </label>
               <input
-                type="tel"
-                inputMode="tel"
-                autoComplete="tel"
-                value={phone}
-                onChange={(e) => setPhone(e.target.value)}
-                placeholder="+96599887766"
+                type="email"
+                inputMode="email"
+                autoComplete="email"
+                value={email}
+                onChange={(e) => setEmail(e.target.value)}
+                placeholder="you@example.com"
                 disabled={loading}
                 className="w-full px-4 py-3 rounded-xl border-2 border-amber-200 focus:border-amber-400 focus:outline-none disabled:opacity-50"
                 required
               />
               <p className="text-xs text-gray-400 mt-1">
-                Include the country code (e.g. +965 for Kuwait).
+                We'll email a 6-digit code. No password needed.
               </p>
             </div>
             <button
@@ -158,14 +162,14 @@ function LoginForm() {
             <button
               type="button"
               onClick={() => {
-                setStep("phone");
+                setStep("email");
                 setCode("");
                 setInfo(null);
                 setError(null);
               }}
               className="w-full text-sm text-gray-500 hover:text-amber-700"
             >
-              ← Use a different number
+              ← Use a different email
             </button>
           </form>
         )}
