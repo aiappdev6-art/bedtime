@@ -35,6 +35,12 @@ export default function LibraryPage() {
         <div className="flex items-center gap-3">
           <AuthChip />
           <Link
+            href="/orders"
+            className="text-sm text-amber-700 hover:underline font-semibold"
+          >
+            My orders →
+          </Link>
+          <Link
             href="/"
             className="px-4 py-2 bg-gradient-to-r from-amber-400 to-orange-400 text-white rounded-xl font-semibold shadow hover:shadow-lg transition"
           >

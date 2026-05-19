@@ -1,0 +1,138 @@
+# Features Checklist
+
+Implementation plan for: MyFatoorah payments, paid options (voice + character upload), OTP auth, PDF export.
+
+## Assumptions (since open questions were not answered)
+
+- **OTP**: SMS-based (phone), used as **login + identity** (replaces per-device library binding). Provider: **MyFatoorah SMS** if available, else Twilio Verify.
+- **MyFatoorah**: start in **sandbox** (`apitest.myfatoorah.com`), switch to live via env var.
+- **Character upload**: when enabled, force `IMAGE_PROVIDER=openrouter` (Gemini 2.5 Flash Image, supports image input). Pollinations cannot do reference images.
+- **Currency**: KD only for now; show "KWD" suffix everywhere.
+- **Refunds**: if image generation fails after payment, **auto-retry once**; if still fails, mark order `failed` and admin can refund manually from the admin dashboard.
+
+---
+
+## Pricing model
+
+| Option | Price (KWD) |
+|---|---|
+| Base story (4 pages, text + images) | 5.000 |
+| + Voice narration (ElevenLabs) | +3.000 |
+| + Upload main character photo | +3.000 |
+| **Max total** | **11.000** |
+
+---
+
+## Phase 1 — Foundations (DB + Auth + OTP)
+
+- [ ] Add `users` table in Supabase: `id`, `phone`, `created_at`, `last_login_at`
+- [ ] Add `orders` table: `id`, `user_id`, `story_id` (nullable until generated), `amount_kwd`, `options` (jsonb: `{ voice, characterImage }`), `myfatoorah_invoice_id`, `status` (`pending|paid|failed|refunded`), `created_at`, `paid_at`
+- [ ] Migrate existing `stories` table: add `user_id` (nullable for backward compat), keep `device_id` as fallback
+- [ ] **OTP flow**:
+  - [ ] `POST /api/auth/otp/request` → generate 6-digit code, store hashed in `otp_codes` table with 5-min TTL, send SMS
+  - [ ] `POST /api/auth/otp/verify` → verify code, create/find user, issue session cookie (use Supabase Auth custom JWT or iron-session)
+  - [ ] Rate limit: max 3 OTP requests per phone per hour
+- [ ] SMS provider integration in `lib/sms.ts` (start with Twilio Verify; swap for MyFatoorah SMS later if cheaper)
+- [ ] Frontend: phone input + OTP code screen on `app/page.tsx` (gate the create form behind login)
+- [ ] Migrate `lib/deviceId.ts` library reads to prefer `user_id` when logged in
+
+## Phase 2 — Order & Pricing UI
+
+- [ ] Update `app/page.tsx` form: add two checkboxes
+  - "Add voice narration (+3 KWD)"
+  - "Upload main character photo (+3 KWD)" → reveals file input
+- [ ] Show live total: "Total: X.XXX KWD"
+- [ ] File upload handler: accept jpg/png ≤ 5MB, upload to Supabase Storage bucket `character-uploads/{user_id}/{uuid}.jpg`
+- [ ] `lib/pricing.ts` — single source of truth for price calculation (server + client import)
+- [ ] On submit: create `order` row with `status=pending`, redirect to MyFatoorah checkout
+
+## Phase 3 — MyFatoorah Integration
+
+- [ ] Env vars: `MYFATOORAH_API_KEY`, `MYFATOORAH_BASE_URL` (sandbox vs live), `MYFATOORAH_WEBHOOK_SECRET`
+- [ ] `lib/myfatoorah.ts`:
+  - [ ] `initiatePayment(orderId, amount, customerName, phone)` → returns `InvoiceURL`
+  - [ ] `verifyPayment(paymentId)` → confirms status with MyFatoorah API
+- [ ] `POST /api/payment/initiate` — creates MyFatoorah invoice, updates order with `invoice_id`, returns redirect URL
+- [ ] `GET /api/payment/callback` — user returns here after payment, verify with MyFatoorah, mark order paid, redirect to `/story/generating?orderId=...`
+- [ ] `POST /api/payment/webhook` — server-to-server confirmation (signed); idempotent
+- [ ] Error/cancel page for failed payments
+- [ ] Test in sandbox with their test card
+
+## Phase 4 — Gate story generation behind paid orders
+
+- [ ] Modify `app/api/generate/route.ts`:
+  - [ ] Accept `orderId` in body
+  - [ ] Verify order belongs to current user AND `status=paid` AND not already consumed
+  - [ ] On success, link generated `story_id` to the order
+- [ ] Branch image provider based on order options:
+  - [ ] If `options.characterImage` → use OpenRouter Gemini with the uploaded image as reference (modify `lib/openrouterImage.ts` to accept `referenceImageUrl`)
+  - [ ] Else → use `IMAGE_PROVIDER` default
+- [ ] Branch narration based on `options.voice`:
+  - [ ] If voice paid → generate ElevenLabs audio (already exists)
+  - [ ] Else → skip narration entirely (don't show play button on `/story`)
+
+## Phase 5 — Character image with Gemini
+
+- [ ] Update `lib/openrouterImage.ts` to send `messages` with `image_url` parts when a reference is provided
+- [ ] System/user prompt: "Use the person in the reference image as the main character. Match their face, hair, and skin tone consistently across all pages."
+- [ ] Run all 4 page-image calls with the same reference image
+- [ ] Auto-retry once on failure; log with `[image:openrouter:character]` prefix
+
+## Phase 6 — PDF export
+
+- [ ] Install `@react-pdf/renderer` (server-rendered, no headless browser needed)
+- [ ] `lib/pdf.ts` — `renderStoryPdf(story): Promise<Buffer>`
+  - [ ] Cover page: title + first image
+  - [ ] One page per story page: image on top, text below
+  - [ ] Footer: "Generated by [app name]"
+- [ ] `GET /api/story/[id]/pdf` — auth check (user owns the story), stream PDF
+- [ ] "Download PDF" button on `app/story/StoryViewer.tsx`
+- [ ] Cache generated PDF in Supabase Storage (`stories-pdf/{story_id}.pdf`) to avoid re-rendering
+
+## Phase 7 — Admin updates
+
+- [ ] Add `Orders` tab to `app/admin`:
+  - [ ] List orders with status, amount, user phone, options
+  - [ ] Manual refund button (calls MyFatoorah refund API)
+  - [ ] Filter by status / date range
+- [ ] Add revenue stats to admin dashboard (total KWD by day/month)
+
+## Phase 8 — Polish
+
+- [ ] Receipt email/SMS after successful payment (order ID + download link)
+- [ ] "My Orders" page for logged-in users
+- [ ] Update `README.md` and `CLAUDE.md` with new env vars and flow
+- [ ] Test full happy path: login → pay → generate → view → download PDF
+- [ ] Test failure paths: payment cancelled, image gen fails, OTP expired
+
+---
+
+## New env vars (add to `.env.example`)
+
+```
+# MyFatoorah
+MYFATOORAH_API_KEY=
+MYFATOORAH_BASE_URL=https://apitest.myfatoorah.com  # live: https://api.myfatoorah.com
+MYFATOORAH_WEBHOOK_SECRET=
+
+# SMS / OTP
+SMS_PROVIDER=twilio  # or "myfatoorah"
+TWILIO_ACCOUNT_SID=
+TWILIO_AUTH_TOKEN=
+TWILIO_VERIFY_SERVICE_SID=
+
+# Session
+SESSION_SECRET=  # 32-byte random for iron-session
+
+# App
+NEXT_PUBLIC_APP_URL=http://localhost:3000  # for MyFatoorah CallbackURL
+```
+
+---
+
+## Open decisions to revisit before shipping
+
+1. **Anonymous orders?** Should logged-out users still be able to purchase, or is OTP login mandatory before checkout? (Plan above assumes mandatory.)
+2. **Re-generation policy** — if user dislikes the generated story, can they regenerate for free or do they pay again?
+3. **Tax / VAT** — Kuwait doesn't have VAT (yet), but if launching in other GCC countries we'll need to add it to the order.
+4. **PDF watermark** — free preview with watermark vs paid full-quality? (Current plan: PDF is included with the base 5 KWD.)
