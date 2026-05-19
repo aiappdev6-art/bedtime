@@ -73,13 +73,19 @@ export async function POST(req: NextRequest) {
   }
 
   try {
+    // CustomerName goes to MyFatoorah's strict-validation field (letters/spaces
+    // only). Don't put user-supplied strings (story title) in here — they'll be
+    // rejected. The story title is already stored on the order; lib/myfatoorah
+    // will sanitise this further as a safety net.
+    const customerName = user.email
+      ? user.email.split("@")[0]
+      : "Bedtime Customer";
+
     const result = await sendPayment({
       orderId: data.id,
       amountKwd: Number(data.amount_kwd),
       customer: {
-        name: data.options?.title
-          ? `Story: ${data.options.title.slice(0, 40)}`
-          : "Story customer",
+        name: customerName,
         phone: user.phone ? `+${user.phone}` : null,
         email: user.email ?? null,
       },

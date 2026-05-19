@@ -65,6 +65,19 @@ function compact<T extends Record<string, unknown>>(obj: T): Partial<T> {
   return out as Partial<T>;
 }
 
+/** MyFatoorah's CustomerName allows only letters and spaces. Strip everything
+ *  else (digits, punctuation, emoji, colons, parentheses, etc.), collapse
+ *  whitespace, and fall back to a safe default if nothing remains. */
+function sanitizeCustomerName(name: string): string {
+  // Keep ASCII letters + Latin-1 supplement letters (accented chars) + spaces.
+  const cleaned = name
+    .replace(/[^A-Za-zÀ-ſ\s]/g, " ")
+    .replace(/\s+/g, " ")
+    .trim()
+    .slice(0, 50);
+  return cleaned.length >= 2 ? cleaned : "Bedtime Customer";
+}
+
 export async function sendPayment(
   input: SendPaymentInput,
 ): Promise<SendPaymentResult> {
@@ -84,7 +97,7 @@ export async function sendPayment(
   const body = compact({
     NotificationOption: "LNK", // we want the URL only, no SMS/email from MF
     InvoiceValue: Number(input.amountKwd.toFixed(3)),
-    CustomerName: (input.customer.name || "Story customer").slice(0, 50),
+    CustomerName: sanitizeCustomerName(input.customer.name || "Bedtime Customer"),
     DisplayCurrencyIso: "KWD",
     MobileCountryCode: mobileCountryCode,
     CustomerMobile: customerMobile,
