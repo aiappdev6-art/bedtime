@@ -81,6 +81,10 @@ const checks = [
     label: "Storage policy character_uploads_owner_insert",
     sql: `select 1 from pg_policies where schemaname='storage' and tablename='objects' and policyname='character_uploads_owner_insert'`,
   },
+  {
+    label: "Column public.stories.voice",
+    sql: `select 1 from information_schema.columns where table_schema='public' and table_name='stories' and column_name='voice'`,
+  },
 ];
 
 let pass = 0, fail = 0;

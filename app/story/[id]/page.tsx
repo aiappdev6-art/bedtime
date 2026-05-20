@@ -22,7 +22,7 @@ export default async function StoryByIdPage({
 
   const { data, error } = await supabaseAdmin
     .from("stories")
-    .select("title, pages, deleted_at, user_id")
+    .select("title, pages, voice, deleted_at, user_id")
     .eq("id", id)
     .single();
 
@@ -33,6 +33,7 @@ export default async function StoryByIdPage({
   const story: Story = {
     title: data.title,
     pages: data.pages as StoryPage[],
+    voice: data.voice === true,
   };
 
   return <StoryViewer initialStory={story} storyId={id} />;

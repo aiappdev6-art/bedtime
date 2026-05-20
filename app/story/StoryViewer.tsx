@@ -63,10 +63,13 @@ export default function StoryViewer({
   const total = story.pages.length;
   const current = story.pages[page];
   const hasElevenAudio = !!current.audioUrl;
-  // Voice is a paid add-on. If the user didn't purchase it, every page has
-  // audioUrl === null and we hide audio controls entirely (no silent browser-TTS
-  // fallback — that would undermine the upsell).
-  const narrationPurchased = story.pages.some((p) => !!p.audioUrl);
+  // Show audio controls when voice was purchased (authoritative flag from the
+  // story row), OR for legacy stories that don't have the flag but do have
+  // audio per page. When the flag is set but a specific page's audioUrl is
+  // null (ElevenLabs failed), the play handler falls back to browser TTS so
+  // the customer still gets narration for the page they paid for.
+  const narrationPurchased =
+    story.voice === true || story.pages.some((p) => !!p.audioUrl);
 
   const next = () => {
     if (page < total - 1) {

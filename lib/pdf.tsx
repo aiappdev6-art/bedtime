@@ -6,9 +6,15 @@
 //    and inlined by the image providers) but can also be a remote URL (picsum
 //    fallback). Both work.
 //  - Page size: A5 landscape gives a nice picture-book aspect ratio.
+//  - Arabic support: the default Helvetica font has no Arabic glyphs, so we
+//    register Noto Sans Arabic (variable, both weights). The file lives in
+//    public/fonts and is bundled into the serverless function by
+//    outputFileTracingIncludes in next.config.mjs.
 
+import path from "node:path";
 import {
   Document,
+  Font,
   Image,
   Page,
   StyleSheet,
@@ -19,6 +25,37 @@ import {
 import type { Story } from "@/lib/types";
 
 const APP_NAME = "Kid's Story Maker";
+
+// Register once at module load. The same variable font file covers both
+// regular and bold weights — fontkit selects the right axis instance.
+const ARABIC_FONT_PATH = path.join(
+  process.cwd(),
+  "public",
+  "fonts",
+  "NotoSansArabic-Regular.ttf",
+);
+
+Font.register({
+  family: "NotoArabic",
+  fonts: [
+    { src: ARABIC_FONT_PATH, fontWeight: 400 },
+    { src: ARABIC_FONT_PATH, fontWeight: 700 },
+  ],
+});
+
+// Disable @react-pdf's hyphenation for Arabic — splitting words breaks
+// shaping and produces ugly mid-word breaks.
+Font.registerHyphenationCallback((word: string) => [word]);
+
+// Any character in the Arabic / Arabic Supplement / Arabic Extended ranges
+// marks the run as RTL. Good enough for our title/page text use cases —
+// we don't try to mix LTR and RTL inside a single paragraph.
+const ARABIC_RANGE = /[؀-ۿݐ-ݿࢠ-ࣿﭐ-﷿ﹰ-﻿]/;
+
+function isRtl(text: string | null | undefined): boolean {
+  if (!text) return false;
+  return ARABIC_RANGE.test(text);
+}
 
 const styles = StyleSheet.create({
   cover: {
@@ -65,6 +102,13 @@ const styles = StyleSheet.create({
     color: "#1F2937", // gray-800
     textAlign: "left",
   },
+  pageTextRtl: {
+    fontFamily: "NotoArabic",
+    textAlign: "right",
+  },
+  coverTitleRtl: {
+    fontFamily: "NotoArabic",
+  },
 
   footer: {
     position: "absolute",
@@ -79,11 +123,17 @@ const styles = StyleSheet.create({
 });
 
 function StoryDocument({ story }: { story: Story }) {
+  const titleRtl = isRtl(story.title);
+
   return (
     <Document title={story.title} author={APP_NAME}>
       {/* Cover */}
       <Page size="A5" orientation="landscape" style={styles.cover}>
-        <Text style={styles.coverTitle}>{story.title}</Text>
+        <Text
+          style={titleRtl ? [styles.coverTitle, styles.coverTitleRtl] : styles.coverTitle}
+        >
+          {story.title}
+        </Text>
         {story.pages[0]?.imageUrl && (
           // eslint-disable-next-line jsx-a11y/alt-text
           <Image src={story.pages[0].imageUrl} style={styles.coverImage} />
@@ -92,26 +142,33 @@ function StoryDocument({ story }: { story: Story }) {
       </Page>
 
       {/* One page per story page */}
-      {story.pages.map((p, i) => (
-        <Page
-          key={i}
-          size="A5"
-          orientation="landscape"
-          style={styles.storyPage}
-        >
-          {p.imageUrl && (
-            // eslint-disable-next-line jsx-a11y/alt-text
-            <Image src={p.imageUrl} style={styles.pageImage} />
-          )}
-          <Text style={styles.pageText}>{p.text}</Text>
-          <View style={styles.footer} fixed>
-            <Text>{APP_NAME}</Text>
-            <Text>
-              Page {i + 1} / {story.pages.length}
+      {story.pages.map((p, i) => {
+        const pageRtl = isRtl(p.text);
+        return (
+          <Page
+            key={i}
+            size="A5"
+            orientation="landscape"
+            style={styles.storyPage}
+          >
+            {p.imageUrl && (
+              // eslint-disable-next-line jsx-a11y/alt-text
+              <Image src={p.imageUrl} style={styles.pageImage} />
+            )}
+            <Text
+              style={pageRtl ? [styles.pageText, styles.pageTextRtl] : styles.pageText}
+            >
+              {p.text}
             </Text>
-          </View>
-        </Page>
-      ))}
+            <View style={styles.footer} fixed>
+              <Text>{APP_NAME}</Text>
+              <Text>
+                Page {i + 1} / {story.pages.length}
+              </Text>
+            </View>
+          </Page>
+        );
+      })}
     </Document>
   );
 }

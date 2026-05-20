@@ -8,4 +8,7 @@ export type StoryPage = {
 export type Story = {
   title: string;
   pages: StoryPage[];
+  /** True when voice narration was purchased. Drives the viewer Play/Stop UI
+   *  independently of whether ElevenLabs actually returned audio per page. */
+  voice?: boolean;
 };

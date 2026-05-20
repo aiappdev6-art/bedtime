@@ -3,8 +3,10 @@
 // reused as the main character across all pages of the story.
 
 const OPENROUTER_URL = "https://openrouter.ai/api/v1/chat/completions";
+// Gemini 2.5 Flash Image went GA and the "-preview" alias was removed from
+// OpenRouter — keep the GA name as default. Override via OPENROUTER_IMAGE_MODEL.
 const IMAGE_MODEL =
-  process.env.OPENROUTER_IMAGE_MODEL || "google/gemini-2.5-flash-image-preview";
+  process.env.OPENROUTER_IMAGE_MODEL || "google/gemini-2.5-flash-image";
 
 type GenerateOptions = {
   /** Optional data: URI of a reference photo to use as the main character. */

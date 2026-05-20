@@ -33,26 +33,33 @@ function buildPrompt(scenePrompt: string, characterSheet?: string): string {
   return `${characterSheet}\n\nScene: ${scenePrompt}`;
 }
 
+export type ImageResult = {
+  url: string;
+  /** Which provider produced the image — useful to detect a personalisation miss. */
+  provider: Provider | "picsum";
+  /** True when the user's reference photo actually made it into the request. */
+  usedReference: boolean;
+};
+
 export async function generateImage(
   scenePrompt: string,
   options: ImageOptions = {},
-): Promise<string> {
+): Promise<ImageResult> {
   const fullPrompt = buildPrompt(scenePrompt, options.characterSheet);
   const ref = options.referenceImageDataUri ?? null;
 
-  // When the user paid for a custom character, OpenRouter (Gemini) is the
-  // only provider that can use the reference photo. Don't fall through to
-  // pollinations/lumen on failure — those would produce a non-personalised
-  // image, which violates what the user paid for. Use picsum placeholder
-  // as the last resort so the page never throws.
+  // Personalised attempt: only OpenRouter (Gemini) accepts a reference photo.
   if (ref) {
     try {
-      return await generateImageWithOpenRouter(fullPrompt, {
+      const url = await generateImageWithOpenRouter(fullPrompt, {
         referenceImageDataUri: ref,
       });
+      return { url, provider: "openrouter", usedReference: true };
     } catch (err) {
       console.error("[image:openrouter:character] failed:", err);
-      return fallbackImage(scenePrompt);
+      // Don't return picsum here — a story-relevant image without the user's
+      // face is strictly better than a random landscape. Caller is expected
+      // to flag the story for partial refund when usedReference is false.
     }
   }
 
@@ -61,12 +68,16 @@ export async function generateImage(
   for (const provider of order) {
     try {
       if (provider === "pollinations") {
-        return await generateImageWithPollinations(fullPrompt, options.seed);
+        const url = await generateImageWithPollinations(fullPrompt, options.seed);
+        return { url, provider, usedReference: false };
       } else if (provider === "openrouter") {
-        return await generateImageWithOpenRouter(fullPrompt);
+        const url = await generateImageWithOpenRouter(fullPrompt);
+        return { url, provider, usedReference: false };
       } else {
         const url = await lumenGenerate(fullPrompt);
-        if (!url.includes("picsum.photos")) return url;
+        if (!url.includes("picsum.photos")) {
+          return { url, provider, usedReference: false };
+        }
       }
     } catch (err) {
       console.error(`[image:${provider}] failed:`, err);
@@ -74,5 +85,9 @@ export async function generateImage(
   }
 
   console.warn("[image] all providers failed, using placeholder");
-  return fallbackImage(scenePrompt);
+  return {
+    url: fallbackImage(scenePrompt),
+    provider: "picsum",
+    usedReference: false,
+  };
 }

@@ -120,7 +120,7 @@ export async function POST(req: NextRequest) {
       }
     }
 
-    const [images, audios] = await Promise.all([
+    const [imageResults, audios] = await Promise.all([
       Promise.all(
         generated.pages.map((p) =>
           generateImage(p.imagePrompt, {
@@ -138,12 +138,27 @@ export async function POST(req: NextRequest) {
           ),
     ]);
 
+    // Diagnostics: personalisation miss = user paid for the photo option but
+    // we couldn't use the reference on at least one page. Admin can refund
+    // the +3 KWD character fee for these orders.
+    const characterImageRequested = opts.characterImage === true;
+    const personalisationMiss =
+      characterImageRequested &&
+      imageResults.some((r) => !r.usedReference);
+    if (personalisationMiss) {
+      console.warn(
+        `[/api/generate] personalisation miss for order ${order.id}: ` +
+          imageResults.map((r) => r.provider).join(","),
+      );
+    }
+
     const story: Story = {
       title: generated.title || title,
+      voice: wantVoice,
       pages: generated.pages.map((p, i) => ({
         text: p.text,
         imagePrompt: p.imagePrompt,
-        imageUrl: images[i],
+        imageUrl: imageResults[i].url,
         audioUrl: audios[i],
       })),
     };
@@ -157,6 +172,7 @@ export async function POST(req: NextRequest) {
         title: story.title,
         description,
         pages: story.pages,
+        voice: wantVoice,
       })
       .select("id")
       .single();
